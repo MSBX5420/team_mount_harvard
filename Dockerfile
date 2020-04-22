@@ -3,7 +3,7 @@ FROM jupyter/all-spark-notebook:17aba6048f44
 # install the notebook package
 RUN pip install --no-cache --upgrade pip && \
     pip install --no-cache notebook
-COPY ./requirements.txt
+COPY ./requirements.txt /requirements.txt
 RUN pip install -r requirements.txt
 RUN pip install --no-cache-dir notebook==5.*
 ARG NB_USER=jovyan
