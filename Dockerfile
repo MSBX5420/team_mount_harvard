@@ -4,6 +4,7 @@ FROM jupyter/all-spark-notebook:17aba6048f44
 RUN pip install --no-cache --upgrade pip && \
     pip install --no-cache notebook
 
+RUN pip install -r requirements.txt
 RUN pip install --no-cache-dir notebook==5.*
 ARG NB_USER=jovyan
 ARG NB_UID=1000
