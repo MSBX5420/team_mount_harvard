@@ -5,6 +5,9 @@ RUN pip install --no-cache --upgrade pip && \
     pip install --no-cache notebook
 
 RUN pip install --no-cache-dir notebook==5.*
+COPY ./requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt
+
 ARG NB_USER=jovyan
 ARG NB_UID=1000
 ENV USER ${NB_USER}
