@@ -1,14 +1,13 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
-# In[25]:
+# In[1]:
 
 
-import findspark
-findspark.init()
 import pandas as pd
 import pyspark as ps
 import warnings
+from pyspark.sql import SparkSession
 from pyspark.sql import SQLContext
 from pyspark import SparkContext
 from pyspark.sql.functions import udf, col
@@ -27,20 +26,13 @@ from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.feature import VectorAssembler
 
 
-# In[26]:
+# In[2]:
 
 
-sc = SparkContext()
-sqlContext = SQLContext(sc)
+spark = SparkSession.builder.getOrCreate()
 
 
-# In[27]:
-
-
-# sc.stop()
-
-
-# In[28]:
+# In[3]:
 
 
 schema = StructType([
@@ -56,116 +48,121 @@ schema = StructType([
 ])
 
 
-# In[29]:
+# In[4]:
 
 
-data = []
-with open('small_tweets.csv', 'r' ) as doc:
-    reader = csv.DictReader(doc)
-    for line in reader:
-        data.append(line)
-
-df = sc.parallelize(data).toDF()
+spark = SparkSession.builder.getOrCreate()
+df = spark.read.format("csv").option("header", "true").option("multiLine","true").load("s3://msbx5420-2020/small_tweets.csv")
+df.show(5)
 
 
-# In[30]:
-
-
-#data = sqlContext.read.format('csv') \
-#.options(header='true', schema=schema) \
-#.load('small_tweets.csv')
-
-
-# In[31]:
-
-
-df.show()
-
-
-# In[32]:
+# In[5]:
 
 
 df.printSchema()
 
 
-# In[33]:
+# In[6]:
 
 
 flag1 = df.withColumn("favourites_count", df["favourites_count"].cast(IntegerType()))
 
 
-# In[34]:
+# In[7]:
 
 
 flag2 = flag1.withColumn("retweet_count", flag1["retweet_count"].cast(IntegerType()))
 
 
-# In[35]:
+# In[8]:
 
 
 flag3 = flag2.withColumn("followers_count", flag2["followers_count"].cast(IntegerType()))
 
 
-# In[36]:
+# In[9]:
 
 
 dfnew = flag3.withColumn("verified", flag3["verified"].cast(IntegerType()))
 
 
-# In[37]:
+# In[10]:
+
+
+dfnew = dfnew.na.drop()
+
+
+# In[11]:
 
 
 dfnew.printSchema()
 
 
-# In[38]:
-
-
-dfnew.show(5)
-
-
-# In[46]:
+# In[122]:
 
 
 tokenizer = Tokenizer(inputCol="text", outputCol="words")
 hashtf = HashingTF(numFeatures=2**16, inputCol="words", outputCol='tf')
 idf = IDF(inputCol='tf', outputCol="text_features", minDocFreq=5) #minDocFreq: remove sparse terms
-label_stringIdx = StringIndexer(inputCol = "favourites_count", outputCol = "label")
-pipeline = Pipeline(stages=[tokenizer, hashtf, idf, label_stringIdx])
+# label_stringIdx = StringIndexer(inputCol = 'favourites_count', outputCol = "fav_idx")
+pipeline = Pipeline(stages=[tokenizer, hashtf, idf])
+
+
+# In[123]:
+
 
 pipelineFit = pipeline.fit(dfnew)
 model_df = pipelineFit.transform(dfnew)
-model_df.show(5)
 
 
-# In[47]:
+# In[124]:
 
 
-vectorAssembler = VectorAssembler(inputCols = ['followers_count', 'retweet_count', 'verified', 'tf', 'text_features'], outputCol = 'features')
-model_df = vectorAssembler.transform(model_df)
-model_df = model_df.select(['features', 'label'])
-model_df.show(3)
+data2 = model_df.select(model_df.followers_count, 
+                        model_df.retweet_count, 
+                        model_df.verified, 
+                        model_df.tf,
+                        model_df.text_features,
+#                         model_df.fav_idx,
+                        model_df.favourites_count.alias('label'))
 
 
-# In[48]:
+# In[125]:
 
 
-(train_set, val_set, test_set) = model_df.randomSplit([0.8, 0.1, 0.1], seed = 2000)
+data2.printSchema()
 
 
-# In[49]:
+# In[126]:
 
 
-lr = LinearRegression(featuresCol = 'features', labelCol='label')
-lr_model = lr.fit(train_set)
+# train, test = data2.randomSplit([0.7,0.3])
+
+
+# In[127]:
+
+
+assembler = VectorAssembler().setInputCols(['followers_count', 'retweet_count', 'verified', 'tf']).setOutputCol('features')
+
+
+# In[128]:
+
+
+train01 = assembler.transform(data2)
+train02 = train01.select("features","label")
+
+
+# In[129]:
+
+
+lr = LinearRegression(featuresCol = 'features', labelCol='label', maxIter=10, regParam=0.3, elasticNetParam=0.8)
+lr_model = lr.fit(train02)
 trainingSummary = lr_model.summary
-print("RMSE: %f" % trainingSummary.rootMeanSquaredError)
 print("r2: %f" % trainingSummary.r2)
 
 
 # In[ ]:
 
 
-# predictions = lr_model.transform(test_set)
-# predictions.select("prediction","favourites_count","features").show()
+
 
